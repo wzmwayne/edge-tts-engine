@@ -161,13 +161,15 @@ object EdgeWs {
         return out.toByteArray()
     }
 
-    /** 解析二进制音频帧：前 2 字节为头长度，头为文本，其后为 MP3 数据。 */
+    /** 解析二进制音频帧：前 2 字节为头长度，头为文本（含 Path:audio 行），其后为 MP3 数据。 */
     private fun parseAudio(payload: ByteArray): ByteArray? {
         if (payload.size < 2) return null
         val headerLen = ((payload[0].toInt() and 0xFF) shl 8) or (payload[1].toInt() and 0xFF)
         if (headerLen > payload.size) return null
         val header = String(payload, 2, headerLen, Charsets.ISO_8859_1)
-        if (!header.startsWith("Path:audio")) return null
+        val isAudio = header.lineSequence()
+            .any { it.regionMatches(0, "Path:audio", 0, 10, ignoreCase = true) }
+        if (!isAudio) return null
         return payload.copyOfRange(2 + headerLen, payload.size)
     }
 

@@ -16,13 +16,13 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * 调试日志：输出到 /sdcard/Download/edge-tts-engine.log。
+ * 调试日志：输出到 /sdcard/Download/edge-tts-logs/edge-tts-<启动时间>.log。
  * 连点「使用说明」卡片 7 次启用（写入 SharedPreferences 持久化），
  * 启用后应用任何线程的未捕获异常也会写入该文件，并弹出错误页后退出。
  */
 object EdgeLog {
     private const val TAG = "EdgeTtsLog"
-    private const val FILE_NAME = "edge-tts-engine.log"
+    private const val LOG_DIR = "edge-tts-logs"
     private const val PREF = "edge_tts_log"
     private const val KEY_ENABLED = "enabled"
     private const val KEY_CRASH = "last_crash"
@@ -31,6 +31,7 @@ object EdgeLog {
     @Volatile private var path: String = ""
     @Volatile private var uri: android.net.Uri? = null
     private var appCtx: Context? = null
+    private var logName: String = ""
 
     fun isEnabled(): Boolean = enabled
 
@@ -47,6 +48,8 @@ object EdgeLog {
 
     fun init(context: Context) {
         appCtx = context.applicationContext
+        logName = "edge-tts-" +
+            SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date()) + ".log"
         enabled = appCtx!!.getSharedPreferences(PREF, Context.MODE_PRIVATE)
             .getBoolean(KEY_ENABLED, false)
         if (enabled) {
@@ -89,25 +92,28 @@ object EdgeLog {
             if (Build.VERSION.SDK_INT >= 29) {
                 val resolver = ctx.contentResolver
                 val values = ContentValues().apply {
-                    put(MediaStore.Downloads.DISPLAY_NAME, FILE_NAME)
+                    put(MediaStore.Downloads.DISPLAY_NAME, logName)
                     put(MediaStore.MediaColumns.MIME_TYPE, "text/plain")
                     put(
                         MediaStore.MediaColumns.RELATIVE_PATH,
-                        Environment.DIRECTORY_DOWNLOADS,
+                        "${Environment.DIRECTORY_DOWNLOADS}/$LOG_DIR",
                     )
                 }
                 uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
                 if (uri != null) {
-                    "下载/$FILE_NAME (MediaStore)"
+                    "下载/$LOG_DIR/$logName"
                 } else {
                     fallbackFile()
                 }
             } else {
-                val dir = Environment.getExternalStoragePublicDirectory(
-                    Environment.DIRECTORY_DOWNLOADS,
+                val dir = File(
+                    Environment.getExternalStoragePublicDirectory(
+                        Environment.DIRECTORY_DOWNLOADS,
+                    ),
+                    LOG_DIR,
                 )
                 if (dir.exists() || dir.mkdirs()) {
-                    File(dir, FILE_NAME).absolutePath
+                    File(dir, logName).absolutePath
                 } else {
                     fallbackFile()
                 }
@@ -121,7 +127,7 @@ object EdgeLog {
     private fun fallbackFile(): String {
         val dir = appCtx?.getExternalFilesDir(null)
             ?: return "无可用日志路径"
-        return File(dir, FILE_NAME).absolutePath
+        return File(dir, logName).absolutePath
     }
 
     fun d(tag: String, msg: String) {
