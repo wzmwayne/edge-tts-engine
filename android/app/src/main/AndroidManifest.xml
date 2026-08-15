@@ -24,6 +24,12 @@
             </intent-filter>
         </activity>
 
+        <!-- 未捕获异常兜底错误页 -->
+        <activity
+            android:name=".EdgeErrorActivity"
+            android:exported="false"
+            android:theme="@style/LaunchTheme" />
+
         <!-- 系统级 TTS 引擎服务 -->
         <service
             android:name=".EdgeTtsEngineService"

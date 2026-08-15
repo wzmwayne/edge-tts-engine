@@ -1,9 +1,70 @@
 import 'dart:convert';
+import 'dart:ui' show PlatformDispatcher;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-void main() => runApp(const EdgeTtsApp());
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  FlutterError.onError = (details) {
+    _logFatal('FlutterError: ${details.exception}\n${details.stack ?? ''}');
+    runApp(FatalErrorApp(error: details.exception.toString()));
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    _logFatal('PlatformDispatcher: $error\n$stack');
+    runApp(FatalErrorApp(error: '$error'));
+    return true;
+  };
+  runApp(const EdgeTtsApp());
+}
+
+/// 尽力把致命错误上报到原生日志文件（连点使用说明启用日志模式后生效）。
+Future<void> _logFatal(String msg) async {
+  try {
+    const MethodChannel('com.edge.tts/engine').invokeMethod('logFatal', msg);
+  } catch (_) {}
+}
+
+/// Flutter 侧致命错误兜底页。
+class FatalErrorApp extends StatelessWidget {
+  const FatalErrorApp({super.key, required this.error});
+
+  final String error;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.red)),
+      home: Scaffold(
+        appBar: AppBar(title: const Text('应用发生错误')),
+        body: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  child: SelectableText(
+                    error,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                      color: Colors.redAccent,
+                    ),
+                  ),
+                ),
+              ),
+              FilledButton(
+                onPressed: () => SystemNavigator.pop(),
+                child: const Text('退出'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class EdgeTtsApp extends StatelessWidget {
   const EdgeTtsApp({super.key});

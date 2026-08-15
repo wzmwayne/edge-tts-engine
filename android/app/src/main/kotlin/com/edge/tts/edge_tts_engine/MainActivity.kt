@@ -36,6 +36,11 @@ class MainActivity : FlutterActivity() {
                         }
                         "getVoices" -> result.success(VoiceStore.voicesJson(this))
                         "enableLogging" -> result.success(EdgeLog.enable(this))
+                        "logFatal" -> {
+                            val msg = call.arguments as? String ?: ""
+                            EdgeLog.e(TAG, "Flutter fatal: $msg")
+                            result.success(true)
+                        }
                         "refreshVoices" -> {
                             Thread {
                                 try {
