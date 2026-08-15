@@ -140,7 +140,7 @@ object EdgeWs {
                         0x8 -> throw IOException("server closed ws")
                         0x9 -> sendFrame(sock, 0xA, frame.payload) // ping -> pong
                         0xA -> {}
-                        0x1 -> if (frame.payload.toString(Charsets.UTF_8).contains("Path:turn.end")) {
+                        0x1 -> if (String(frame.payload, Charsets.UTF_8).contains("Path:turn.end")) {
                             EdgeLog.d(TAG, "turn.end received, out=${out.size()}B")
                             break
                         }
@@ -213,13 +213,13 @@ object EdgeWs {
             val buf = ByteArray(4096)
             val acc = ByteArrayOutputStream()
             var timeoutMs = System.currentTimeMillis() + 20000
-            while (acc.toString(Charsets.ISO_8859_1).indexOf("\r\n\r\n") < 0) {
+            while (acc.toString("ISO-8859-1").indexOf("\r\n\r\n") < 0) {
                 if (System.currentTimeMillis() > timeoutMs) throw IOException("handshake timeout")
                 val n = ssl.inputStream.read(buf)
                 if (n < 0) throw EOFException("connection closed during handshake")
                 acc.write(buf, 0, n)
             }
-            val head = acc.toString(Charsets.ISO_8859_1)
+            val head = acc.toString("ISO-8859-1")
             if (head.indexOf(" 101 ") < 0) {
                 throw IOException("ws handshake failed: ${head.split("\r\n")[0]}")
             }
