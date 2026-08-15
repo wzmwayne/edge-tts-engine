@@ -27,6 +27,18 @@ jobs:
           restore-keys: |
             gradle-${{ runner.os }}-
 
+      - name: Cache Flutter build outputs
+        uses: actions/cache@v4
+        with:
+          path: |
+            build
+            .dart_tool
+            android/.gradle
+            android/app/build
+          key: flutter-build-${{ runner.os }}-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties', 'pubspec.lock') }}
+          restore-keys: |
+            flutter-build-${{ runner.os }}-
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -44,7 +56,7 @@ jobs:
             pub-${{ runner.os }}-
 
       - name: Build debug APK
-        run: flutter build apk --debug
+        run: flutter build apk --debug --target-platform android-arm64,android-arm
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

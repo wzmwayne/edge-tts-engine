@@ -203,9 +203,9 @@ class EdgeTtsEngineService : TextToSpeechService() {
                 text, voice, rate, pitch,
                 isStopped = { stopped },
                 onAudio = { audioChunk ->
-                    if (stopped) return@onAudio
+                    if (stopped) return@synthesize
                     for (frame in splitter.push(audioChunk)) {
-                        if (stopped) return@onAudio
+                        if (stopped) return@synthesize
                         if (!decoder.isStarted) {
                             val h = Mp3Frame.parseHeader(frame, 0, frame.size)
                             if (h != null) {

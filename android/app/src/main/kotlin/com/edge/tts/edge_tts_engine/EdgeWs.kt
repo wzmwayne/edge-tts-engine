@@ -106,7 +106,11 @@ object EdgeWs {
         isStopped: () -> Boolean,
     ): ByteArray {
         val out = ByteArrayOutputStream()
-        synthesize(text, voice, ratePercent, pitchHz, isStopped) { out.write(it) }
+        synthesize(
+            text, voice, ratePercent, pitchHz,
+            isStopped = isStopped,
+            onAudio = { out.write(it) },
+        )
         return out.toByteArray()
     }
 
