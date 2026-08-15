@@ -59,7 +59,7 @@ object VoiceStore {
         for (v in voiceList(c)) {
             val loc = v.localeObj() ?: continue
             try {
-                loc.iso3Language?.let { out.add(it) }
+                out.add(loc.getISO3Language())
             } catch (e: Exception) {
                 out.add(loc.language)
             }
@@ -68,16 +68,20 @@ object VoiceStore {
     }
 
     /** 系统要求的 Voice 对象集合（API 21+）。 */
-    fun supportedVoices(c: Context): Set<Voice> {
-        val out = mutableSetOf<Voice>()
+    fun voices(c: Context): List<Voice> {
+        val out = mutableListOf<Voice>()
         for (v in voiceList(c)) {
             val loc = v.localeObj() ?: continue
-            val builder = Voice.Builder(v.shortName, loc)
-                .quality(Voice.QUALITY_VERY_HIGH)
-                .latency(Voice.LATENCY_NORMAL)
-                .requiresNetworkConnection(true)
-                .addFeatures(setOf(TextToSpeech.Engine.KEY_FEATURE_NETWORK_SYNTHESIS))
-            out.add(builder.build())
+            out.add(
+                Voice(
+                    v.shortName,
+                    loc,
+                    Voice.QUALITY_VERY_HIGH,
+                    Voice.LATENCY_NORMAL,
+                    true,
+                    setOf(TextToSpeech.Engine.KEY_FEATURE_NETWORK_SYNTHESIS),
+                )
+            )
         }
         return out
     }

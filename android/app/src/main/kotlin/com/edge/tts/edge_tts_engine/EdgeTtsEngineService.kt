@@ -33,9 +33,7 @@ class EdgeTtsEngineService : TextToSpeechService() {
 
     override fun onGetLanguage(): Array<String> = arrayOf("cmn", "CHN", "")
 
-    override fun onGetSupportedLanguages(): Set<String> = VoiceStore.supportedLanguages(this)
-
-    override fun onGetSupportedVoices(): Set<Voice> = VoiceStore.supportedVoices(this)
+    override fun onGetVoices(): List<Voice> = VoiceStore.voices(this)
 
     override fun onGetDefaultVoiceNameFor(lang: String?, country: String?, variant: String?): String? {
         return VoiceStore.defaultVoiceFor(this, lang, country)

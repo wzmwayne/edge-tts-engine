@@ -136,7 +136,7 @@ object EdgeWs {
                         0x8 -> throw IOException("server closed ws")
                         0x9 -> sendFrame(sock, 0xA, frame.payload) // ping -> pong
                         0xA -> {}
-                        0x1 -> if (frame.payload.indexOf("Path:turn.end") >= 0) break
+                        0x1 -> if (frame.payload.toString(Charsets.UTF_8).contains("Path:turn.end")) break
                         0x2 -> parseAudio(frame.payload)?.let { out.write(it) }
                     }
                 }
