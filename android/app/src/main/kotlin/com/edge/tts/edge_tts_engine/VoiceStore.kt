@@ -134,6 +134,20 @@ object VoiceStore {
         return country3.uppercase()
     }
 
+    /** 仅按语言匹配时的默认国家偏好（优先主流/简体）。 */
+    private val DEFAULT_COUNTRY = mapOf(
+        "zh" to "CN", "cmn" to "CN", "yue" to "HK",
+        "en" to "US", "ja" to "JP", "ko" to "KR", "fr" to "FR",
+        "de" to "DE", "es" to "ES", "ru" to "RU", "it" to "IT",
+        "pt" to "PT", "nl" to "NL", "pl" to "PL", "tr" to "TR",
+        "sv" to "SE", "da" to "DK", "no" to "NO", "fi" to "FI",
+        "cs" to "CZ", "el" to "GR", "hu" to "HU", "ro" to "RO",
+        "sk" to "SK", "uk" to "UA", "ar" to "SA", "hi" to "IN",
+        "th" to "TH", "vi" to "VN", "id" to "ID", "ms" to "MY",
+        "fil" to "PH", "ta" to "IN", "te" to "IN", "bn" to "IN",
+        "ur" to "PK", "fa" to "IR", "he" to "IL",
+    )
+
     private fun iso3ToIso2(lang: String?): String? {
         if (lang.isNullOrEmpty()) return null
         if (lang.length == 2) return lang.lowercase()
