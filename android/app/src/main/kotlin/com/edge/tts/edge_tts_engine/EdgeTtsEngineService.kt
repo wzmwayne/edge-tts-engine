@@ -31,12 +31,12 @@ class EdgeTtsEngineService : TextToSpeechService() {
     }
 
     override fun onIsLanguageAvailable(lang: String?, country: String?, variant: String?): Int =
-        TextToSpeech.LANG_AVAILABLE
+    TextToSpeech.LANG_COUNTRY_VAR_AVAILABLE
 
     override fun onLoadLanguage(lang: String?, country: String?, variant: String?): Int =
-        TextToSpeech.LANG_AVAILABLE
+        TextToSpeech.LANG_COUNTRY_VAR_AVAILABLE
 
-    override fun onGetLanguage(): Array<String> = arrayOf("cmn", "CHN", "")
+    override fun onGetLanguage(): Array<String> = arrayOf("zho", "CHN", "")
 
     override fun onGetVoices(): List<Voice> = VoiceStore.voices(this)
 

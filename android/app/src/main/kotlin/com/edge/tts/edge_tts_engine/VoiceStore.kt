@@ -86,26 +86,55 @@ object VoiceStore {
         return out
     }
 
-    /** 根据语言/国家返回一个匹配的默认音色 ShortName。 */
+    /** 根据语言/国家返回一个匹配的默认音色 ShortName。lang 可能是三字母码(如 zho)。 */
     fun defaultVoiceFor(c: Context, lang: String?, country: String?): String? {
-        val wanted = buildString {
-            append(lang ?: "")
-            if (!country.isNullOrEmpty()) {
-                append("-").append(country)
-            }
-        }.lowercase()
+        val lang2 = iso3ToIso2(lang)
+        val country2 = country?.uppercase()
         for (v in voiceList(c)) {
             val loc = v.localeObj() ?: continue
-            val langPart = loc.language.lowercase()
-            val countryPart = loc.country.lowercase()
-            if (wanted.startsWith(langPart)) {
-                if (country.isNullOrEmpty() || countryPart == country.lowercase()) {
+            val langPart = loc.language
+            val countryPart = loc.country.uppercase()
+            if (langPart == lang2) {
+                if (country2.isNullOrEmpty() || countryPart == country2) {
                     return v.shortName
                 }
             }
         }
+        for (v in voiceList(c)) {
+            val loc = v.localeObj() ?: continue
+            if (loc.language == lang2) return v.shortName
+        }
         return voiceList(c).firstOrNull()?.shortName
     }
+
+    private fun iso3ToIso2(lang: String?): String? {
+        if (lang.isNullOrEmpty()) return null
+        if (lang.length == 2) return lang.lowercase()
+        return ISO3_TO_ISO2[lang.lowercase()] ?: lang.lowercase()
+    }
+
+    private val ISO3_TO_ISO2 = mapOf(
+        "zho" to "zh", "cmn" to "zh", "chi" to "zh", "yue" to "zh",
+        "eng" to "en", "jpn" to "ja", "kor" to "ko", "fra" to "fr",
+        "fre" to "fr", "deu" to "de", "ger" to "de", "spa" to "es",
+        "rus" to "ru", "ita" to "it", "ptb" to "pt", "por" to "pt",
+        "ara" to "ar", "hin" to "hi", "ben" to "bn", "tha" to "th",
+        "vie" to "vi", "idn" to "id", "ind" to "id", "nld" to "nl",
+        "dut" to "nl", "pol" to "pl", "tur" to "tr", "ukr" to "uk",
+        "swe" to "sv", "dan" to "da", "nor" to "no", "fin" to "fi",
+        "ces" to "cs", "cze" to "cs", "ell" to "el", "gre" to "el",
+        "hun" to "hu", "ron" to "ro", "rum" to "ro", "slk" to "sk",
+        "slo" to "sk", "afr" to "af", "amh" to "am", "aze" to "az",
+        "bos" to "bs", "bul" to "bg", "cat" to "ca", "hrv" to "hr",
+        "zhr" to "hr", "heb" to "he", "ara" to "ar", "mkd" to "mk",
+        "msa" to "ms", "may" to "ms", "nep" to "ne", "pan" to "pa",
+        "pus" to "ps", "srp" to "sr", "som" to "so", "swa" to "sw",
+        "tam" to "ta", "tel" to "te", "urd" to "ur", "uzb" to "uz",
+        "fil" to "fil", "guj" to "gu", "kan" to "kn", "kaz" to "kk",
+        "khm" to "km", "lao" to "lo", "lit" to "lt", "lav" to "lv",
+        "mal" to "ml", "mar" to "mr", "mon" to "mn", "mya" to "my",
+        "sin" to "si", "tgl" to "fil", "yid" to "yi", "zul" to "zu",
+    )
 
     data class VoiceItem(
         val shortName: String,
