@@ -203,9 +203,9 @@ class EdgeTtsEngineService : TextToSpeechService() {
                 text, voice, rate, pitch,
                 isStopped = { stopped },
                 onAudio = { audioChunk ->
-                    if (stopped) return@synthesize
+                    if (stopped || decoder.isFailed) return@synthesize
                     for (frame in splitter.push(audioChunk)) {
-                        if (stopped) return@synthesize
+                        if (stopped || decoder.isFailed) return@synthesize
                         if (!decoder.isStarted) {
                             val h = Mp3Frame.parseHeader(frame, 0, frame.size)
                             if (h != null) {
@@ -231,8 +231,11 @@ class EdgeTtsEngineService : TextToSpeechService() {
                 return
             }
             decoder.finish()
-            if (stopped) {
-                EdgeLog.w(TAG, "streaming stopped during drain -> error")
+            if (stopped || decoder.isFailed) {
+                EdgeLog.w(
+                    TAG,
+                    "streaming stopped=$stopped decoderFailed=${decoder.isFailed} -> error",
+                )
                 callback.error()
             } else {
                 EdgeLog.d(
