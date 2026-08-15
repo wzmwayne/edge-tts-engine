@@ -16,9 +16,16 @@
 - 启用方式：右上角设置页「调试日志」开关（不再是连点使用说明卡片 7 次）。`EdgeLog.enable/disable/syncFromSettings`。
 
 ## 设置页
-- 右上角设置页（`lib/main.dart` 的 `SettingsPage`）提供：流式合成开关（beta，仅开关+存储，实际合成仍走全量缓冲）、默认音色语言过滤（all/system/具体语言）、调试日志开关。
-- 存储键在 `VoiceStore`：`streaming`、`lang_filter`、`debug_log`、`usage_hidden`；channel 方法 `getSettings`/`setSettings`。
+- 右上角设置页（`lib/main.dart` 的 `SettingsPage`）提供：流式合成开关（beta：边收边播，首帧到达即播放；关闭则走全量缓冲）、默认音色语言过滤（all/system/具体语言）、调试日志开关。
+- 存储键在 `VoiceStore`：`streaming`、`lang_filter`、`debug_log`、`usage_hidden`；channel 方法 `getSettings`/`setSettings`；改动即自动保存。
 - 使用说明卡片可关闭，`usage_hidden=true` 后首页不再展示。
+
+## 流式合成（Streaming.kt）
+- `Mp3Frame`：解析 MP3 帧头（MPEG1/2/2.5 Layer III），算出帧长/采样率/声道/每帧采样数。
+- `Mp3FrameSplitter`：把 WebSocket 音频字节按帧切分，跨 push 保留残帧；`reset()` 用于新文本块。
+- `StreamingDecoder`：用 `MediaCodec("audio/mpeg")` 逐帧喂入、逐块输出 PCM（API 21+，兼容 Android 7）；`startFrom` 用首帧头配格式并回调 `onStart`。
+- `EdgeWs.synthesize`：流式入口，每收到音频帧立即 `onAudio(it)` 回调，不再攒完整 MP3。
+- `EdgeTtsEngineService.synthesizeStreaming`：按 streaming 设置分流；流式路径首帧即 `callback.start` 并开始喂 PCM，注意 `stopped` 中断要 `callback.error()`。
 
 ## 关键业务规则
 - 系统 TTS 语言判定：`onIsLanguageAvailable` 必须按 `getExpectedLanguageAvailableStatus` 逻辑精确返回（variant 空+country 空→LANG_AVAILABLE；variant 空→LANG_COUNTRY_AVAILABLE；否则→VAR_AVAILABLE），不能无条件返回 VAR_AVAILABLE，否则系统显示"不支持"。

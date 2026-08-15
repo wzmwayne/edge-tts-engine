@@ -105,16 +105,35 @@ object EdgeWs {
         pitchHz: Int,
         isStopped: () -> Boolean,
     ): ByteArray {
+        val out = ByteArrayOutputStream()
+        synthesize(text, voice, ratePercent, pitchHz, isStopped) { out.write(it) }
+        return out.toByteArray()
+    }
+
+    /**
+     * 流式合成：每收到一段 MP3 音频立即回调 [onAudio]，不缓存全部再返回。
+     * 长文本按 4096 字节分块，每块单独连接；[onChunkStart] 在每块开始前调用，
+     * 供调用方重置 MP3 帧切分器（不同块的 MP3 流独立，残帧不能跨块拼接）。
+     */
+    fun synthesize(
+        text: String,
+        voice: String,
+        ratePercent: Int,
+        pitchHz: Int,
+        isStopped: () -> Boolean,
+        onAudio: (ByteArray) -> Unit,
+        onChunkStart: () -> Unit = {},
+    ) {
         val t0 = System.currentTimeMillis()
         val rate = (if (ratePercent == 0) "+0%" else "${if (ratePercent > 0) "+" else ""}$ratePercent%")
         val pitch = (if (pitchHz == 0) "+0Hz" else "${if (pitchHz > 0) "+" else ""}$pitchHz")
-        EdgeLog.d(TAG, "collectMp3 text=${text.take(80)} voice=$voice rate=$rate pitch=$pitch")
+        EdgeLog.d(TAG, "synthesize text=${text.take(80)} voice=$voice rate=$rate pitch=$pitch")
         val chunks = splitChunks(text)
         EdgeLog.d(TAG, "文本分为 ${chunks.size} 块: " +
             chunks.map { it.toByteArray(Charsets.UTF_8).size }.joinToString(","))
-        val out = ByteArrayOutputStream()
         for ((i, chunk) in chunks.withIndex()) {
             if (isStopped()) break
+            onChunkStart()
             EdgeLog.d(TAG, "chunk[$i/${chunks.size}] start bytes=${chunk.toByteArray(Charsets.UTF_8).size}")
             val sock = connect()
             try {
@@ -139,7 +158,7 @@ object EdgeWs {
                 EdgeLog.d(TAG, "chunk[$i] ssml 请求已发送")
 
                 while (true) {
-                    if (isStopped()) return out.toByteArray()
+                    if (isStopped()) return
                     val frame = readFrame(sock)
                     when (frame.opcode) {
                         0x8 -> throw IOException("server closed ws")
@@ -149,15 +168,15 @@ object EdgeWs {
                         }
                         0xA -> {}
                         0x1 -> if (String(frame.payload, Charsets.UTF_8).contains("Path:turn.end")) {
-                            EdgeLog.d(TAG, "chunk[$i] turn.end received, out=${out.size()}B")
+                            EdgeLog.d(TAG, "chunk[$i] turn.end received")
                             break
                         } else {
                             EdgeLog.d(TAG, "chunk[$i] 文本帧: " +
                                 String(frame.payload, Charsets.UTF_8).take(200))
                         }
                         0x2 -> parseAudio(frame.payload)?.let {
-                            out.write(it)
-                            EdgeLog.d(TAG, "chunk[$i] audio chunk +${it.size}B total=${out.size()}B")
+                            onAudio(it)
+                            EdgeLog.d(TAG, "chunk[$i] audio chunk +${it.size}B")
                         }
                         else -> EdgeLog.d(TAG, "chunk[$i] 未知 opcode=${frame.opcode}")
                     }
@@ -173,8 +192,7 @@ object EdgeWs {
                 }
             }
         }
-        EdgeLog.d(TAG, "collectMp3 done total=${out.size()}B took=${System.currentTimeMillis() - t0}ms")
-        return out.toByteArray()
+        EdgeLog.d(TAG, "synthesize done took=${System.currentTimeMillis() - t0}ms")
     }
 
     /** 解析二进制音频帧：前 2 字节为头长度，头为文本（含 Path:audio 行），其后为 MP3 数据。 */

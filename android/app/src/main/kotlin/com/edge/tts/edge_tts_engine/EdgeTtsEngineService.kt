@@ -102,51 +102,147 @@ class EdgeTtsEngineService : TextToSpeechService() {
             EdgeLog.d(TAG, "computed rate=$rate pitch=$pitch")
 
             EdgeLog.d(TAG, "开始请求 Edge TTS 合成音频...")
-            val mp3 = EdgeWs.collectMp3(text, voice, rate, pitch) { stopped }
-            if (stopped || mp3.isEmpty()) {
-                EdgeLog.w(
-                    TAG,
-                    "stopped=$stopped mp3.size=${mp3.size} -> callback.error() " +
-                        "took=${System.currentTimeMillis() - t0}ms",
-                )
-                callback.error()
-                return
-            }
-            EdgeLog.d(TAG, "mp3 obtained size=${mp3.size} took=${System.currentTimeMillis() - t0}ms")
 
-            val pcm = Mp3Decoder.decode(mp3)
-            if (stopped) {
-                EdgeLog.w(TAG, "stopped during decode -> callback.error()")
-                callback.error()
-                return
+            if (VoiceStore.streaming(this)) {
+                synthesizeStreaming(text, voice, rate, pitch, callback, t0)
+            } else {
+                synthesizeBuffered(text, voice, rate, pitch, callback, t0)
             }
-            EdgeLog.d(
-                TAG,
-                "decode done pcm=${pcm.data.size}B sr=${pcm.sampleRate} ch=${pcm.channels}",
-            )
-
-            callback.start(pcm.sampleRate, AudioFormat.ENCODING_PCM_16BIT, pcm.channels)
-            val max = callback.maxBufferSize
-            var off = 0
-            var fed = 0
-            EdgeLog.d(TAG, "callback.start ok maxBufferSize=$max, 开始喂数据...")
-            while (off < pcm.data.size && !stopped) {
-                val n = minOf(max, pcm.data.size - off)
-                callback.audioAvailable(pcm.data, off, n)
-                off += n
-                fed += n
-                if (off % (max * 20) == 0) {
-                    EdgeLog.d(TAG, "feeding progress ${off}/${pcm.data.size} fed=$fed")
-                }
-            }
-            EdgeLog.d(TAG, "fed $fed/${pcm.data.size} stopped=$stopped")
-            if (stopped) callback.error() else callback.done()
-            EdgeLog.d(
-                TAG,
-                "onSynthesizeText 完成 fed=$fed total_took=${System.currentTimeMillis() - t0}ms",
-            )
         } catch (e: Exception) {
             EdgeLog.e(TAG, "synthesize failed, took=${System.currentTimeMillis() - t0}ms", e)
+            callback.error()
+        }
+    }
+
+    /** 全量缓冲路径：收完 MP3 -> 整体解码 -> 喂给回调。 */
+    private fun synthesizeBuffered(
+        text: String,
+        voice: String,
+        rate: Int,
+        pitch: Int,
+        callback: SynthesisCallback,
+        t0: Long,
+    ) {
+        val mp3 = EdgeWs.collectMp3(text, voice, rate, pitch) { stopped }
+        if (stopped || mp3.isEmpty()) {
+            EdgeLog.w(
+                TAG,
+                "stopped=$stopped mp3.size=${mp3.size} -> callback.error() " +
+                    "took=${System.currentTimeMillis() - t0}ms",
+            )
+            callback.error()
+            return
+        }
+        EdgeLog.d(TAG, "mp3 obtained size=${mp3.size} took=${System.currentTimeMillis() - t0}ms")
+
+        val pcm = Mp3Decoder.decode(mp3)
+        if (stopped) {
+            EdgeLog.w(TAG, "stopped during decode -> callback.error()")
+            callback.error()
+            return
+        }
+        EdgeLog.d(
+            TAG,
+            "decode done pcm=${pcm.data.size}B sr=${pcm.sampleRate} ch=${pcm.channels}",
+        )
+
+        callback.start(pcm.sampleRate, AudioFormat.ENCODING_PCM_16BIT, pcm.channels)
+        val max = callback.maxBufferSize
+        var off = 0
+        var fed = 0
+        EdgeLog.d(TAG, "callback.start ok maxBufferSize=$max, 开始喂数据...")
+        while (off < pcm.data.size && !stopped) {
+            val n = minOf(max, pcm.data.size - off)
+            callback.audioAvailable(pcm.data, off, n)
+            off += n
+            fed += n
+            if (off % (max * 20) == 0) {
+                EdgeLog.d(TAG, "feeding progress ${off}/${pcm.data.size} fed=$fed")
+            }
+        }
+        EdgeLog.d(TAG, "fed $fed/${pcm.data.size} stopped=$stopped")
+        if (stopped) callback.error() else callback.done()
+        EdgeLog.d(
+            TAG,
+            "onSynthesizeText 完成 fed=$fed total_took=${System.currentTimeMillis() - t0}ms",
+        )
+    }
+
+    /** 流式路径：边收 MP3 帧边解码边喂给回调，首帧到达即开始输出。 */
+    private fun synthesizeStreaming(
+        text: String,
+        voice: String,
+        rate: Int,
+        pitch: Int,
+        callback: SynthesisCallback,
+        t0: Long,
+    ) {
+        val splitter = Mp3FrameSplitter()
+        var fed = 0L
+
+        val decoder = StreamingDecoder(
+            onStart = { sampleRate, channels ->
+                callback.start(sampleRate, AudioFormat.ENCODING_PCM_16BIT, channels)
+                EdgeLog.d(TAG, "streaming callback.start sr=$sampleRate ch=$channels")
+            },
+            onPcm = { pcm ->
+                if (stopped) return@StreamingDecoder
+                val max = callback.maxBufferSize
+                var off = 0
+                while (off < pcm.size && !stopped) {
+                    val n = minOf(max, pcm.size - off)
+                    callback.audioAvailable(pcm, off, n)
+                    off += n
+                    fed += n
+                }
+            },
+        )
+
+        try {
+            EdgeWs.synthesize(
+                text, voice, rate, pitch,
+                isStopped = { stopped },
+                onAudio = { audioChunk ->
+                    if (stopped) return@onAudio
+                    for (frame in splitter.push(audioChunk)) {
+                        if (stopped) return@onAudio
+                        if (!decoder.isStarted) {
+                            val h = Mp3Frame.parseHeader(frame, 0, frame.size)
+                            if (h != null) {
+                                decoder.startFrom(h)
+                                decoder.push(frame, h.samplesPerFrame)
+                            }
+                        } else {
+                            val h = Mp3Frame.parseHeader(frame, 0, frame.size)
+                            if (h != null) decoder.push(frame, h.samplesPerFrame)
+                        }
+                    }
+                },
+                onChunkStart = { splitter.reset() },
+            )
+            if (stopped) {
+                EdgeLog.w(TAG, "streaming stopped mid-synthesis -> error")
+                callback.error()
+                return
+            }
+            if (!decoder.isStarted) {
+                EdgeLog.w(TAG, "streaming no audio frames received -> error")
+                callback.error()
+                return
+            }
+            decoder.finish()
+            if (stopped) {
+                EdgeLog.w(TAG, "streaming stopped during drain -> error")
+                callback.error()
+            } else {
+                EdgeLog.d(
+                    TAG,
+                    "streaming done fed=$fed took=${System.currentTimeMillis() - t0}ms",
+                )
+                callback.done()
+            }
+        } catch (e: Exception) {
+            EdgeLog.e(TAG, "streaming synthesize failed, took=${System.currentTimeMillis() - t0}ms", e)
             callback.error()
         }
     }

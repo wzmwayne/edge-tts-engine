@@ -572,7 +572,7 @@ class _SettingsPageState extends State<SettingsPage> {
         children: [
           SwitchListTile(
             title: const Text('流式合成'),
-            subtitle: const Text('Beta：实时边收边播（暂未启用，仍为全量缓冲）'),
+            subtitle: const Text('Beta：边收边播，首帧到达即开始播放（需系统 TTS 支持）'),
             value: _streaming,
             onChanged: (v) {
               setState(() => _streaming = v);
