@@ -3,6 +3,7 @@ package com.edge.tts.edge_tts_engine
 import android.content.Intent
 import android.provider.Settings
 import android.speech.tts.TextToSpeech
+import android.speech.tts.Voice
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -78,7 +79,24 @@ class MainActivity : FlutterActivity() {
             val engine = tts
             EdgeLog.d(TAG, "tts init status=$status engine=$engine")
             if (status == TextToSpeech.SUCCESS && engine != null) {
-                engine.language = Locale.US
+                val selected = VoiceStore.selectedVoice(this)
+                val item = VoiceStore.voiceList(this)
+                    .firstOrNull { it.shortName == selected }
+                if (item != null) {
+                    val v = item.localeObj()
+                    if (v != null) {
+                        engine.voice = Voice(
+                            item.shortName, v, Voice.QUALITY_VERY_HIGH,
+                            Voice.LATENCY_NORMAL, true,
+                            setOf(TextToSpeech.Engine.KEY_FEATURE_NETWORK_SYNTHESIS),
+                        )
+                        EdgeLog.d(TAG, "已设置音色 ${item.shortName}")
+                    }
+                }
+                if (engine.voice == null) {
+                    engine.language = Locale.SIMPLIFIED_CHINESE
+                    EdgeLog.d(TAG, "未找到已选音色，回退语言 zh-CN")
+                }
                 engine.setOnUtteranceProgressListener(object :
                     android.speech.tts.UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) {

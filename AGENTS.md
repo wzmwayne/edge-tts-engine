@@ -11,7 +11,7 @@
 - 用户选择方案 B：debug keystore 已通过 `actions/cache` 缓存（`~/.android/debug.keystore`，key `debug-keystore-v1`），保证每次 APK 签名一致。不要提交 keystore 文件。
 
 ## 日志
-- 日志统一写单个文件 `/sdcard/Download/edge-tts-logs/edge-tts.log`（Android 10+ 走 MediaStore），每条带完整时间戳 `yyyy-MM-dd HH:mm:ss.SSS`。
+- 日志统一写单个文件 `/sdcard/Download/edge-tts-logs/edge-tts.log.txt`（Android 10+ 走 MediaStore），始终追加到同一文件，每条带完整时间戳 `yyyy-MM-dd HH:mm:ss.SSS`。注意：文件名必须与 MIME 匹配（`.log.txt` + text/plain），否则 MediaProvider 会改名并产生 `(2)` 后缀副本。
 - 启用方式：连点「使用说明」卡片 7 次，状态持久化。
 
 ## 关键业务规则
