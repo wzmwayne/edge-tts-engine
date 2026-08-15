@@ -18,6 +18,7 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
         EdgeLog.init(applicationContext)
+        EdgeLog.syncFromSettings(applicationContext)
         EdgeLog.d(TAG, "MainActivity onCreate")
     }
 
@@ -33,6 +34,24 @@ class MainActivity : FlutterActivity() {
                             val rate = call.argument<Int>("rate") ?: 100
                             val pitch = call.argument<Int>("pitch") ?: 100
                             VoiceStore.writeConfig(this, voice, rate, pitch)
+                            result.success(true)
+                        }
+                        "getSettings" -> result.success(VoiceStore.readSettings(this))
+                        "setSettings" -> {
+                            val streaming = call.argument<Boolean>("streaming")
+                            val langFilter = call.argument<String>("langFilter")
+                            val debug = call.argument<Boolean>("debug")
+                            val usageHidden = call.argument<Boolean>("usageHidden")
+                            VoiceStore.writeSettings(
+                                this,
+                                streaming = streaming,
+                                langFilter = langFilter,
+                                debug = debug,
+                                usageHidden = usageHidden,
+                            )
+                            if (debug != null) {
+                                if (debug) EdgeLog.enable(this) else EdgeLog.disable(this)
+                            }
                             result.success(true)
                         }
                         "getVoices" -> result.success(VoiceStore.voicesJson(this))

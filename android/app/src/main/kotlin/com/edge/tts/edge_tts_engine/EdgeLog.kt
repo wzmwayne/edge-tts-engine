@@ -47,6 +47,24 @@ object EdgeLog {
         return p
     }
 
+    fun disable(context: Context) {
+        val ctx = appCtx ?: context.applicationContext
+        appCtx = ctx
+        enabled = false
+        ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_ENABLED, false).apply()
+        Log.d(TAG, "日志模式已关闭")
+    }
+
+    /** 按设置同步调试日志开关。 */
+    fun syncFromSettings(context: Context) {
+        if (VoiceStore.debugEnabled(context)) {
+            if (!enabled) enable(context)
+        } else {
+            if (enabled) disable(context)
+        }
+    }
+
     fun init(context: Context) {
         appCtx = context.applicationContext
         enabled = appCtx!!.getSharedPreferences(PREF, Context.MODE_PRIVATE)

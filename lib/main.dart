@@ -128,12 +128,14 @@ class _HomePageState extends State<HomePage> {
   String _search = '';
   bool _loading = false;
   String _status = '';
-  int _usageTaps = 0;
+  String _langFilter = 'all';
+  bool _usageHidden = false;
 
   @override
   void initState() {
     super.initState();
     _loadConfig();
+    _loadSettings();
     _loadVoices();
   }
 
@@ -149,6 +151,29 @@ class _HomePageState extends State<HomePage> {
     } catch (e) {
       _setStatus('读取配置失败: $e');
     }
+  }
+
+  Future<void> _loadSettings() async {
+    try {
+      final s = await _channel.invokeMethod<Map<dynamic, dynamic>>('getSettings');
+      if (s == null) return;
+      setState(() {
+        _langFilter = (s['langFilter'] as String?) ?? 'all';
+        _usageHidden = (s['usageHidden'] as bool?) ?? false;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _openSettings() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SettingsPage(
+          channel: _channel,
+          langFilter: _langFilter,
+        ),
+      ),
+    );
+    await _loadSettings();
   }
 
   Future<void> _loadVoices() async {
@@ -235,6 +260,7 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final filtered = _voices
+        .where((v) => _matchesLangFilter(v))
         .where((v) =>
             v.shortName.toLowerCase().contains(_search.toLowerCase()) ||
             v.locale.toLowerCase().contains(_search.toLowerCase()) ||
@@ -246,6 +272,11 @@ class _HomePageState extends State<HomePage> {
         title: const Text('Edge TTS 引擎'),
         actions: [
           IconButton(
+            tooltip: '设置',
+            onPressed: _openSettings,
+            icon: const Icon(Icons.settings),
+          ),
+          IconButton(
             tooltip: '刷新音色',
             onPressed: _loading ? null : _refreshVoices,
             icon: const Icon(Icons.refresh),
@@ -254,7 +285,7 @@ class _HomePageState extends State<HomePage> {
       ),
       body: Column(
         children: [
-          _buildUsageCard(),
+          if (!_usageHidden) _buildUsageCard(),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             child: TextField(
@@ -311,51 +342,54 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Future<void> _enableLogging() async {
-    try {
-      final path = await _channel.invokeMethod<String>('enableLogging');
-      _setStatus('日志模式已启用，日志文件：$path');
-    } catch (e) {
-      _setStatus('启用日志失败: $e');
+  bool _matchesLangFilter(VoiceInfo v) {
+    if (_langFilter == 'all') return true;
+    if (_langFilter == 'system') {
+      return v.locale.toLowerCase().startsWith(
+            PlatformDispatcher.instance.locale.languageCode.toLowerCase(),
+          );
     }
+    return v.locale.toLowerCase().startsWith(_langFilter.toLowerCase());
   }
 
-  void _onUsageTap() {
-    _usageTaps++;
-    if (_usageTaps >= 7) {
-      _usageTaps = 0;
-      _enableLogging();
-    }
+  Future<void> _hideUsage() async {
+    await _channel.invokeMethod('setSettings', {'usageHidden': true});
+    if (mounted) setState(() => _usageHidden = true);
   }
 
   Widget _buildUsageCard() {
-    return GestureDetector(
-      onTap: _onUsageTap,
-      child: Card(
-        margin: const EdgeInsets.all(12),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: const [
-                  Icon(Icons.info_outline),
-                  SizedBox(width: 8),
-                  Text('使用说明', style: TextStyle(fontWeight: FontWeight.bold)),
-                ],
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                '1. 安装并打开本应用\n'
-                '2. 选择音色后点击「打开系统 TTS 设置」\n'
-                '3. 在 设置 → 无障碍 → 文字转语音输出 中把默认引擎切换为「Edge TTS 引擎」\n'
-                '4. 任意应用（如 Legado 阅读器）即可使用 Edge 在线语音朗读\n'
-                '提示：需要联网；音色列表可点右上角刷新拉取全部 400+ 音色。',
-                style: TextStyle(fontSize: 13, height: 1.5),
-              ),
-            ],
-          ),
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.info_outline),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text('使用说明',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+                IconButton(
+                  tooltip: '关闭使用说明',
+                  icon: const Icon(Icons.close, size: 18),
+                  onPressed: _hideUsage,
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              '1. 安装并打开本应用\n'
+              '2. 选择音色后点击「打开系统 TTS 设置」\n'
+              '3. 在 设置 → 无障碍 → 文字转语音输出 中把默认引擎切换为「Edge TTS 引擎」\n'
+              '4. 任意应用（如 Legado 阅读器）即可使用 Edge 在线语音朗读\n'
+              '提示：需要联网；音色列表可点右上角刷新拉取全部 400+ 音色。',
+              style: TextStyle(fontSize: 13, height: 1.5),
+            ),
+          ],
         ),
       ),
     );
@@ -424,6 +458,133 @@ class _HomePageState extends State<HomePage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 设置页：流式（beta，仅开关与存储）、默认音色语言过滤、调试日志开关。
+class SettingsPage extends StatefulWidget {
+  const SettingsPage({
+    super.key,
+    required this.channel,
+    required this.langFilter,
+  });
+
+  final MethodChannel channel;
+  final String langFilter;
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  late bool _streaming;
+  late bool _debug;
+  late String _langFilter;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _langFilter = widget.langFilter;
+    _streaming = false;
+    _debug = false;
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final s = await widget.channel
+          .invokeMethod<Map<dynamic, dynamic>>('getSettings');
+      if (!mounted || s == null) return;
+      setState(() {
+        _streaming = (s['streaming'] as bool?) ?? false;
+        _debug = (s['debug'] as bool?) ?? false;
+        _langFilter = (s['langFilter'] as String?) ?? _langFilter;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      await widget.channel.invokeMethod('setSettings', {
+        'streaming': _streaming,
+        'debug': _debug,
+        'langFilter': _langFilter,
+      });
+    } catch (_) {}
+    if (mounted) setState(() => _saving = false);
+  }
+
+  List<DropdownMenuItem<String>> _langOptions() {
+    const labels = {
+      'all': '所有',
+      'system': '系统',
+      'zh-CN': '简体中文',
+      'zh-HK': '粤语(香港)',
+      'zh-TW': '繁体中文',
+      'en-US': '英语(美国)',
+      'en-GB': '英语(英国)',
+      'ja-JP': '日语',
+      'ko-KR': '韩语',
+      'fr-FR': '法语',
+      'de-DE': '德语',
+      'es-ES': '西班牙语',
+      'ru-RU': '俄语',
+    };
+    final options = ['all', 'system', 'zh-CN', 'zh-HK', 'zh-TW', 'en-US',
+      'en-GB', 'ja-JP', 'ko-KR', 'fr-FR', 'de-DE', 'es-ES', 'ru-RU'];
+    return options
+        .map((code) => DropdownMenuItem(
+              value: code,
+              child: Text('${labels[code] ?? code} ($code)'),
+            ))
+        .toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('设置'),
+        actions: [
+          TextButton(
+            onPressed: _saving ? null : _save,
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+      body: ListView(
+        children: [
+          SwitchListTile(
+            title: const Text('流式合成'),
+            subtitle: const Text('Beta：实时边收边播（暂未启用，仍为全量缓冲）'),
+            value: _streaming,
+            onChanged: (v) => setState(() => _streaming = v),
+          ),
+          const Divider(),
+          ListTile(
+            title: const Text('默认音色语言'),
+            subtitle: const Text('首页音色列表默认展示的语言范围'),
+            trailing: DropdownButton<String>(
+              value: _langFilter,
+              items: _langOptions(),
+              onChanged: (v) {
+                if (v == null) return;
+                setState(() => _langFilter = v);
+              },
+            ),
+          ),
+          const Divider(),
+          SwitchListTile(
+            title: const Text('调试日志'),
+            subtitle: const Text('写入 /sdcard/Download/edge-tts-logs/edge-tts.log.txt'),
+            value: _debug,
+            onChanged: (v) => setState(() => _debug = v),
+          ),
+        ],
       ),
     );
   }

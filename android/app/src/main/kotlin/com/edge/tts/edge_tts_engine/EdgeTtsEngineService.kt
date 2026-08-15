@@ -27,6 +27,7 @@ class EdgeTtsEngineService : TextToSpeechService() {
     override fun onCreate() {
         super.onCreate()
         EdgeLog.init(applicationContext)
+        EdgeLog.syncFromSettings(applicationContext)
         EdgeLog.d(TAG, "service onCreate")
     }
 

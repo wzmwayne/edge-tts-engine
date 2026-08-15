@@ -12,7 +12,12 @@
 
 ## 日志
 - 日志统一写单个文件 `/sdcard/Download/edge-tts-logs/edge-tts.log.txt`（Android 10+ 走 MediaStore），始终追加到同一文件，每条带完整时间戳 `yyyy-MM-dd HH:mm:ss.SSS`。注意：文件名必须与 MIME 匹配（`.log.txt` + text/plain），否则 MediaProvider 会改名并产生 `(2)` 后缀副本。
-- 启用方式：连点「使用说明」卡片 7 次，状态持久化。
+- 启用方式：右上角设置页「调试日志」开关（不再是连点使用说明卡片 7 次）。`EdgeLog.enable/disable/syncFromSettings`。
+
+## 设置页
+- 右上角设置页（`lib/main.dart` 的 `SettingsPage`）提供：流式合成开关（beta，仅开关+存储，实际合成仍走全量缓冲）、默认音色语言过滤（all/system/具体语言）、调试日志开关。
+- 存储键在 `VoiceStore`：`streaming`、`lang_filter`、`debug_log`、`usage_hidden`；channel 方法 `getSettings`/`setSettings`。
+- 使用说明卡片可关闭，`usage_hidden=true` 后首页不再展示。
 
 ## 关键业务规则
 - 系统 TTS 语言判定：`onIsLanguageAvailable` 必须按 `getExpectedLanguageAvailableStatus` 逻辑精确返回（variant 空+country 空→LANG_AVAILABLE；variant 空→LANG_COUNTRY_AVAILABLE；否则→VAR_AVAILABLE），不能无条件返回 VAR_AVAILABLE，否则系统显示"不支持"。

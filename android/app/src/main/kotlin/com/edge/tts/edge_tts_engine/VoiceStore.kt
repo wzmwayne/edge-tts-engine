@@ -15,6 +15,10 @@ object VoiceStore {
     private const val KEY_VOICE = "selected_voice"
     private const val KEY_RATE = "rate"
     private const val KEY_PITCH = "pitch"
+    private const val KEY_STREAMING = "streaming"
+    private const val KEY_LANG_FILTER = "lang_filter"
+    private const val KEY_DEBUG = "debug_log"
+    private const val KEY_USAGE_HIDDEN = "usage_hidden"
 
     private fun prefs(c: Context) =
         c.applicationContext.getSharedPreferences("edge_tts", Context.MODE_PRIVATE)
@@ -32,6 +36,32 @@ object VoiceStore {
         "rate" to prefs(c).getInt(KEY_RATE, 100),
         "pitch" to prefs(c).getInt(KEY_PITCH, 100),
     )
+
+    fun readSettings(c: Context): Map<String, Any> = mapOf(
+        "streaming" to prefs(c).getBoolean(KEY_STREAMING, false),
+        "langFilter" to (prefs(c).getString(KEY_LANG_FILTER, null) ?: "all"),
+        "debug" to prefs(c).getBoolean(KEY_DEBUG, false),
+        "usageHidden" to prefs(c).getBoolean(KEY_USAGE_HIDDEN, false),
+    )
+
+    fun writeSettings(
+        c: Context,
+        streaming: Boolean? = null,
+        langFilter: String? = null,
+        debug: Boolean? = null,
+        usageHidden: Boolean? = null,
+    ) {
+        prefs(c).edit().apply {
+            streaming?.let { putBoolean(KEY_STREAMING, it) }
+            langFilter?.let { putString(KEY_LANG_FILTER, it) }
+            debug?.let { putBoolean(KEY_DEBUG, it) }
+            usageHidden?.let { putBoolean(KEY_USAGE_HIDDEN, it) }
+        }.apply()
+    }
+
+    fun streaming(c: Context): Boolean = prefs(c).getBoolean(KEY_STREAMING, false)
+
+    fun debugEnabled(c: Context): Boolean = prefs(c).getBoolean(KEY_DEBUG, false)
 
     fun selectedVoice(c: Context): String? = prefs(c).getString(KEY_VOICE, null)
 
