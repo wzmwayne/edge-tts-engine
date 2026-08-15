@@ -67,6 +67,12 @@ object VoiceStore {
         return out
     }
 
+    /** lang(可为 3 位或 2 位码)是否在音色列表中有对应语言。 */
+    fun isLanguageSupported(c: Context, lang: String?): Boolean {
+        val lang2 = iso3ToIso2(lang) ?: return false
+        return voiceList(c).any { it.localeObj()?.language == lang2 }
+    }
+
     /** 系统要求的 Voice 对象集合（API 21+）。 */
     fun voices(c: Context): List<Voice> {
         val out = mutableListOf<Voice>()
@@ -89,22 +95,43 @@ object VoiceStore {
     /** 根据语言/国家返回一个匹配的默认音色 ShortName。lang 可能是三字母码(如 zho)。 */
     fun defaultVoiceFor(c: Context, lang: String?, country: String?): String? {
         val lang2 = iso3ToIso2(lang)
-        val country2 = country?.uppercase()
-        for (v in voiceList(c)) {
+        val country2 = iso3CountryToIso2(country)
+        val list = voiceList(c)
+        for (v in list) {
             val loc = v.localeObj() ?: continue
-            val langPart = loc.language
-            val countryPart = loc.country.uppercase()
-            if (langPart == lang2) {
-                if (country2.isNullOrEmpty() || countryPart == country2) {
+            if (loc.language == lang2) {
+                if (country2.isNullOrEmpty() || loc.country.equals(country2, ignoreCase = true)) {
                     return v.shortName
                 }
             }
         }
-        for (v in voiceList(c)) {
+        val defCountry = DEFAULT_COUNTRY[lang2]
+        if (defCountry != null) {
+            for (v in list) {
+                val loc = v.localeObj() ?: continue
+                if (loc.language == lang2 && loc.country.equals(defCountry, ignoreCase = true)) {
+                    return v.shortName
+                }
+            }
+        }
+        for (v in list) {
             val loc = v.localeObj() ?: continue
             if (loc.language == lang2) return v.shortName
         }
-        return voiceList(c).firstOrNull()?.shortName
+        return list.firstOrNull()?.shortName
+    }
+
+    private fun iso3CountryToIso2(country3: String?): String? {
+        if (country3.isNullOrEmpty()) return null
+        if (country3.length == 2) return country3.uppercase()
+        for (l in Locale.getAvailableLocales()) {
+            if (l.country.isEmpty()) continue
+            try {
+                if (l.getISO3Country().equals(country3, ignoreCase = true)) return l.country
+            } catch (e: Exception) {
+            }
+        }
+        return country3.uppercase()
     }
 
     private fun iso3ToIso2(lang: String?): String? {

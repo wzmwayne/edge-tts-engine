@@ -109,10 +109,13 @@ object EdgeWs {
         val rate = (if (ratePercent == 0) "+0%" else "${if (ratePercent > 0) "+" else ""}$ratePercent%")
         val pitch = (if (pitchHz == 0) "+0Hz" else "${if (pitchHz > 0) "+" else ""}$pitchHz")
         EdgeLog.d(TAG, "collectMp3 text=${text.take(80)} voice=$voice rate=$rate pitch=$pitch")
+        val chunks = splitChunks(text)
+        EdgeLog.d(TAG, "文本分为 ${chunks.size} 块: " +
+            chunks.map { it.toByteArray(Charsets.UTF_8).size }.joinToString(","))
         val out = ByteArrayOutputStream()
-        for (chunk in splitChunks(text)) {
+        for ((i, chunk) in chunks.withIndex()) {
             if (isStopped()) break
-            EdgeLog.d(TAG, "chunk start bytes=${chunk.toByteArray(Charsets.UTF_8).size}")
+            EdgeLog.d(TAG, "chunk[$i/${chunks.size}] start bytes=${chunk.toByteArray(Charsets.UTF_8).size}")
             val sock = connect()
             try {
                 val cfg =
@@ -123,6 +126,7 @@ object EdgeWs {
                         "\"sentenceBoundaryEnabled\":\"true\",\"wordBoundaryEnabled\":\"false\"" +
                         "},\"outputFormat\":\"audio-24khz-48kbitrate-mono-mp3\"}}}}\r\n"
                 sendFrame(sock, 0x1, cfg.toByteArray(Charsets.UTF_8))
+                EdgeLog.d(TAG, "chunk[$i] speech.config 已发送")
 
                 val ssml = mkssml(voice, rate, pitch, escapeXml(chunk))
                 val req =
@@ -132,27 +136,39 @@ object EdgeWs {
                         "Path:ssml\r\n\r\n" +
                         ssml
                 sendFrame(sock, 0x1, req.toByteArray(Charsets.UTF_8))
+                EdgeLog.d(TAG, "chunk[$i] ssml 请求已发送")
 
                 while (true) {
                     if (isStopped()) return out.toByteArray()
                     val frame = readFrame(sock)
                     when (frame.opcode) {
                         0x8 -> throw IOException("server closed ws")
-                        0x9 -> sendFrame(sock, 0xA, frame.payload) // ping -> pong
+                        0x9 -> {
+                            EdgeLog.d(TAG, "收到 ping，回 pong")
+                            sendFrame(sock, 0xA, frame.payload)
+                        }
                         0xA -> {}
                         0x1 -> if (String(frame.payload, Charsets.UTF_8).contains("Path:turn.end")) {
-                            EdgeLog.d(TAG, "turn.end received, out=${out.size()}B")
+                            EdgeLog.d(TAG, "chunk[$i] turn.end received, out=${out.size()}B")
                             break
+                        } else {
+                            EdgeLog.d(TAG, "chunk[$i] 文本帧: " +
+                                String(frame.payload, Charsets.UTF_8).take(200))
                         }
                         0x2 -> parseAudio(frame.payload)?.let {
                             out.write(it)
-                            EdgeLog.d(TAG, "audio chunk +${it.size}B total=${out.size()}B")
+                            EdgeLog.d(TAG, "chunk[$i] audio chunk +${it.size}B total=${out.size()}B")
                         }
+                        else -> EdgeLog.d(TAG, "chunk[$i] 未知 opcode=${frame.opcode}")
                     }
                 }
+            } catch (e: Exception) {
+                EdgeLog.e(TAG, "chunk[$i] 处理异常，将回退到下一块或失败", e)
+                throw e
             } finally {
                 try {
                     sock.close()
+                    EdgeLog.d(TAG, "chunk[$i] socket 已关闭")
                 } catch (ignored: Exception) {
                 }
             }
@@ -163,21 +179,32 @@ object EdgeWs {
 
     /** 解析二进制音频帧：前 2 字节为头长度，头为文本（含 Path:audio 行），其后为 MP3 数据。 */
     private fun parseAudio(payload: ByteArray): ByteArray? {
-        if (payload.size < 2) return null
+        if (payload.size < 2) {
+            EdgeLog.d(TAG, "parseAudio 帧过短 size=${payload.size}")
+            return null
+        }
         val headerLen = ((payload[0].toInt() and 0xFF) shl 8) or (payload[1].toInt() and 0xFF)
-        if (headerLen > payload.size) return null
+        if (headerLen > payload.size) {
+            EdgeLog.d(TAG, "parseAudio headerLen=$headerLen > payload.size=${payload.size}，丢弃")
+            return null
+        }
         val header = String(payload, 2, headerLen, Charsets.ISO_8859_1)
         val isAudio = header.lineSequence()
             .any { it.regionMatches(0, "Path:audio", 0, 10, ignoreCase = true) }
-        if (!isAudio) return null
+        if (!isAudio) {
+            EdgeLog.d(TAG, "parseAudio 非音频帧 header=${header.take(120).replace("\r", "\\r")}")
+            return null
+        }
         return payload.copyOfRange(2 + headerLen, payload.size)
     }
 
     private fun connect(): SSLSocket {
         val raw = Socket()
         try {
+            EdgeLog.d(TAG, "connect 开始连接 $WSS_HOST:443 ...")
             raw.connect(InetSocketAddress(WSS_HOST, 443), 15000)
             raw.tcpNoDelay = true
+            EdgeLog.d(TAG, "TCP 已连接")
             val ctx = SSLContext.getInstance("TLS")
             ctx.init(null, null, null)
             val ssl = ctx.socketFactory.createSocket(raw, WSS_HOST, 443, true) as SSLSocket
@@ -189,7 +216,7 @@ object EdgeWs {
             if (!HttpsURLConnection.getDefaultHostnameVerifier().verify(WSS_HOST, ssl.session)) {
                 throw IOException("TLS hostname mismatch")
             }
-            EdgeLog.d(TAG, "TLS handshake ok")
+            EdgeLog.d(TAG, "TLS handshake ok, cipher=${ssl.session.cipherSuite}")
 
             val query =
                 "&ConnectionId=${connectId()}" +

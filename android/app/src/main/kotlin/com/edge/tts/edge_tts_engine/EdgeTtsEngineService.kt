@@ -30,11 +30,29 @@ class EdgeTtsEngineService : TextToSpeechService() {
         EdgeLog.d(TAG, "service onCreate")
     }
 
-    override fun onIsLanguageAvailable(lang: String?, country: String?, variant: String?): Int =
-    TextToSpeech.LANG_COUNTRY_VAR_AVAILABLE
+    override fun onIsLanguageAvailable(lang: String?, country: String?, variant: String?): Int {
+        if (!VoiceStore.isLanguageSupported(this, lang)) {
+            return TextToSpeech.LANG_NOT_SUPPORTED
+        }
+        // 必须精确匹配 getExpectedLanguageAvailableStatus：
+        // variant 空 + country 空 -> LANG_AVAILABLE；variant 空 -> LANG_COUNTRY_AVAILABLE；否则 VAR_AVAILABLE
+        return when {
+            variant.isNullOrEmpty() && country.isNullOrEmpty() -> TextToSpeech.LANG_AVAILABLE
+            variant.isNullOrEmpty() -> TextToSpeech.LANG_COUNTRY_AVAILABLE
+            else -> TextToSpeech.LANG_COUNTRY_VAR_AVAILABLE
+        }
+    }
 
     override fun onLoadLanguage(lang: String?, country: String?, variant: String?): Int =
-        TextToSpeech.LANG_COUNTRY_VAR_AVAILABLE
+        onIsLanguageAvailable(lang, country, variant)
+
+    override fun onIsValidVoiceName(voiceName: String?): Int =
+        if (VoiceStore.voiceList(this).any { it.shortName == voiceName })
+            TextToSpeech.SUCCESS else TextToSpeech.ERROR
+
+    override fun onLoadVoice(voiceName: String?): Int =
+        if (VoiceStore.voiceList(this).any { it.shortName == voiceName })
+            TextToSpeech.SUCCESS else TextToSpeech.ERROR
 
     override fun onGetLanguage(): Array<String> = arrayOf("zho", "CHN", "")
 
@@ -50,56 +68,84 @@ class EdgeTtsEngineService : TextToSpeechService() {
 
     override fun onSynthesizeText(request: SynthesisRequest, callback: SynthesisCallback) {
         stopped = false
+        val t0 = System.currentTimeMillis()
         try {
             val text = request.charSequenceText?.toString() ?: ""
             EdgeLog.d(
                 TAG,
-                "onSynthesizeText text=${text.take(80)} voice=${request.voiceName} " +
+                "onSynthesizeText text=${text.take(80)} voiceName=${request.voiceName} " +
                     "rate=${request.speechRate} pitch=${request.pitch}",
             )
             if (text.isEmpty()) {
-                EdgeLog.w(TAG, "empty text, error")
+                EdgeLog.w(TAG, "empty text -> callback.error()")
                 callback.error()
                 return
             }
-            val voice = request.voiceName?.takeIf { it.isNotEmpty() }
-                ?: VoiceStore.selectedVoice(this)
-                ?: "zh-CN-XiaoxiaoNeural"
-            EdgeLog.d(TAG, "effective voice=$voice")
+
+            // 音色回退链：request.voiceName -> 上次选中 -> 默认
+            var voice = request.voiceName?.takeIf { it.isNotEmpty() }
+            val fallbackSource = if (voice != null) "request.voiceName" else null
+            if (voice == null) {
+                voice = VoiceStore.selectedVoice(this)
+                EdgeLog.d(TAG, "voiceName 为空，回退到已选音色 voice=${voice ?: "null"}")
+            }
+            if (voice == null) {
+                voice = "zh-CN-XiaoxiaoNeural"
+                EdgeLog.d(TAG, "已选音色也为空，回退到默认 voice=$voice")
+            }
+            EdgeLog.d(TAG, "effective voice=$voice source=$fallbackSource")
 
             // speechRate/pitch: 100 为正常，范围约 50~200
             val rate = request.speechRate - 100
             val pitch = request.pitch - 100
+            EdgeLog.d(TAG, "computed rate=$rate pitch=$pitch")
 
+            EdgeLog.d(TAG, "开始请求 Edge TTS 合成音频...")
             val mp3 = EdgeWs.collectMp3(text, voice, rate, pitch) { stopped }
             if (stopped || mp3.isEmpty()) {
-                EdgeLog.w(TAG, "stopped=${stopped} mp3.size=${mp3.size}, error")
+                EdgeLog.w(
+                    TAG,
+                    "stopped=$stopped mp3.size=${mp3.size} -> callback.error() " +
+                        "took=${System.currentTimeMillis() - t0}ms",
+                )
                 callback.error()
                 return
             }
-            EdgeLog.d(TAG, "mp3 obtained size=${mp3.size}")
+            EdgeLog.d(TAG, "mp3 obtained size=${mp3.size} took=${System.currentTimeMillis() - t0}ms")
 
             val pcm = Mp3Decoder.decode(mp3)
             if (stopped) {
-                EdgeLog.w(TAG, "stopped during decode, error")
+                EdgeLog.w(TAG, "stopped during decode -> callback.error()")
                 callback.error()
                 return
             }
+            EdgeLog.d(
+                TAG,
+                "decode done pcm=${pcm.data.size}B sr=${pcm.sampleRate} ch=${pcm.channels}",
+            )
 
             callback.start(pcm.sampleRate, AudioFormat.ENCODING_PCM_16BIT, pcm.channels)
             val max = callback.maxBufferSize
             var off = 0
             var fed = 0
+            EdgeLog.d(TAG, "callback.start ok maxBufferSize=$max, 开始喂数据...")
             while (off < pcm.data.size && !stopped) {
                 val n = minOf(max, pcm.data.size - off)
                 callback.audioAvailable(pcm.data, off, n)
                 off += n
                 fed += n
+                if (off % (max * 20) == 0) {
+                    EdgeLog.d(TAG, "feeding progress ${off}/${pcm.data.size} fed=$fed")
+                }
             }
             EdgeLog.d(TAG, "fed $fed/${pcm.data.size} stopped=$stopped")
             if (stopped) callback.error() else callback.done()
+            EdgeLog.d(
+                TAG,
+                "onSynthesizeText 完成 fed=$fed total_took=${System.currentTimeMillis() - t0}ms",
+            )
         } catch (e: Exception) {
-            EdgeLog.e(TAG, "synthesize failed", e)
+            EdgeLog.e(TAG, "synthesize failed, took=${System.currentTimeMillis() - t0}ms", e)
             callback.error()
         }
     }
