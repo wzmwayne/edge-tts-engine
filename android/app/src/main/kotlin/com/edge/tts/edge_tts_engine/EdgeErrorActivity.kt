@@ -1,6 +1,7 @@
 package com.edge.tts.edge_tts_engine
 
 import android.app.Activity
+import android.graphics.Typeface
 import android.os.Bundle
 import android.os.Process
 import android.view.Gravity
@@ -35,9 +36,9 @@ class EdgeErrorActivity : Activity() {
         val body = TextView(this).apply {
             text = err
             textSize = 12f
-            isTextSelectable = true
+            setTextIsSelectable(true)
             setTextColor(0xFF333333.toInt())
-            typeface = android.graphics.Typeface.MONOSPACE
+            typeface = Typeface.MONOSPACE
         }
         scroll.addView(body)
         val btn = Button(this).apply {
