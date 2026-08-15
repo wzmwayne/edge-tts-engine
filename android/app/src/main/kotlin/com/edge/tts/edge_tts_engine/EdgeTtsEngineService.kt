@@ -6,7 +6,6 @@ import android.speech.tts.SynthesisRequest
 import android.speech.tts.TextToSpeech
 import android.speech.tts.TextToSpeechService
 import android.speech.tts.Voice
-import android.util.Log
 
 /**
  * 系统级 TTS 引擎：把微软 Edge 在线语音合成接入 Android TextToSpeech。
@@ -24,6 +23,12 @@ class EdgeTtsEngineService : TextToSpeechService() {
 
     @Volatile
     private var stopped = false
+
+    override fun onCreate() {
+        super.onCreate()
+        EdgeLog.init(applicationContext)
+        EdgeLog.d(TAG, "service onCreate")
+    }
 
     override fun onIsLanguageAvailable(lang: String?, country: String?, variant: String?): Int =
         TextToSpeech.LANG_AVAILABLE
@@ -47,13 +52,20 @@ class EdgeTtsEngineService : TextToSpeechService() {
         stopped = false
         try {
             val text = request.charSequenceText?.toString() ?: ""
+            EdgeLog.d(
+                TAG,
+                "onSynthesizeText text=${text.take(80)} voice=${request.voiceName} " +
+                    "rate=${request.speechRate} pitch=${request.pitch}",
+            )
             if (text.isEmpty()) {
+                EdgeLog.w(TAG, "empty text, error")
                 callback.error()
                 return
             }
             val voice = request.voiceName?.takeIf { it.isNotEmpty() }
                 ?: VoiceStore.selectedVoice(this)
                 ?: "zh-CN-XiaoxiaoNeural"
+            EdgeLog.d(TAG, "effective voice=$voice")
 
             // speechRate/pitch: 100 为正常，范围约 50~200
             val rate = request.speechRate - 100
@@ -61,12 +73,15 @@ class EdgeTtsEngineService : TextToSpeechService() {
 
             val mp3 = EdgeWs.collectMp3(text, voice, rate, pitch) { stopped }
             if (stopped || mp3.isEmpty()) {
+                EdgeLog.w(TAG, "stopped=${stopped} mp3.size=${mp3.size}, error")
                 callback.error()
                 return
             }
+            EdgeLog.d(TAG, "mp3 obtained size=${mp3.size}")
 
             val pcm = Mp3Decoder.decode(mp3)
             if (stopped) {
+                EdgeLog.w(TAG, "stopped during decode, error")
                 callback.error()
                 return
             }
@@ -74,14 +89,17 @@ class EdgeTtsEngineService : TextToSpeechService() {
             callback.start(pcm.sampleRate, AudioFormat.ENCODING_PCM_16BIT, pcm.channels)
             val max = callback.maxBufferSize
             var off = 0
+            var fed = 0
             while (off < pcm.data.size && !stopped) {
                 val n = minOf(max, pcm.data.size - off)
                 callback.audioAvailable(pcm.data, off, n)
                 off += n
+                fed += n
             }
+            EdgeLog.d(TAG, "fed $fed/${pcm.data.size} stopped=$stopped")
             if (stopped) callback.error() else callback.done()
         } catch (e: Exception) {
-            Log.e(TAG, "synthesize failed", e)
+            EdgeLog.e(TAG, "synthesize failed", e)
             callback.error()
         }
     }

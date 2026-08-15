@@ -11,26 +11,37 @@ import java.io.IOException
  * 用系统 MediaExtractor + MediaCodec 把 MP3 解码为 PCM。
  */
 object Mp3Decoder {
+    private const val TAG = "Mp3Decoder"
 
     class Pcm(val data: ByteArray, val sampleRate: Int, val channels: Int)
 
     fun decode(mp3: ByteArray): Pcm {
+        val t0 = System.currentTimeMillis()
+        EdgeLog.d(TAG, "decode start mp3.size=${mp3.size}")
         val tmp = File.createTempFile("edge_tts", ".mp3")
         try {
             tmp.writeBytes(mp3)
-            return decodeFile(tmp)
+            val pcm = decodeFile(tmp)
+            EdgeLog.d(
+                TAG,
+                "decode ok pcm=${pcm.data.size}B sr=${pcm.sampleRate} ch=${pcm.channels} " +
+                    "took=${System.currentTimeMillis() - t0}ms",
+            )
+            return pcm
         } finally {
             tmp.delete()
         }
     }
 
     private fun decodeFile(file: File): Pcm {
+        EdgeLog.d(TAG, "decodeFile start")
         val extractor = MediaExtractor()
         extractor.setDataSource(file.absolutePath)
         var trackIdx = -1
         var format: MediaFormat? = null
         for (i in 0 until extractor.trackCount) {
             val f = extractor.getTrackFormat(i)
+            EdgeLog.d(TAG, "track[$i] mime=${f.getString(MediaFormat.KEY_MIME)}")
             if (f.getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true) {
                 trackIdx = i
                 format = f
@@ -38,6 +49,7 @@ object Mp3Decoder {
             }
         }
         if (trackIdx < 0 || format == null) throw IOException("no audio track")
+        EdgeLog.d(TAG, "track selected idx=$trackIdx format=$format")
         extractor.selectTrack(trackIdx)
 
         val codec = MediaCodec.createDecoderByType(format.getString(MediaFormat.KEY_MIME)!!)
@@ -54,11 +66,13 @@ object Mp3Decoder {
             } catch (e: Exception) {
                 1
             }
+            EdgeLog.d(TAG, "codec started sr=$sampleRate ch=$channels")
 
             val pcm = ByteArrayOutputStream()
             val info = MediaCodec.BufferInfo()
             var inputDone = false
             var outputDone = false
+            var loops = 0
             while (!outputDone) {
                 if (!inputDone) {
                     val idx = codec.dequeueInputBuffer(10000)
@@ -68,6 +82,7 @@ object Mp3Decoder {
                         if (size < 0) {
                             codec.queueInputBuffer(idx, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                             inputDone = true
+                            EdgeLog.d(TAG, "input EOS queued")
                         } else {
                             codec.queueInputBuffer(idx, 0, size, extractor.sampleTime, 0)
                             extractor.advance()
@@ -75,7 +90,7 @@ object Mp3Decoder {
                     }
                 }
                 when (val outIdx = codec.dequeueOutputBuffer(info, 10000)) {
-                    MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {}
+                    MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> EdgeLog.d(TAG, "output format changed")
                     MediaCodec.INFO_TRY_AGAIN_LATER -> {}
                     else -> {
                         if (outIdx >= 0) {
@@ -87,13 +102,20 @@ object Mp3Decoder {
                             }
                             if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
                                 outputDone = true
+                                EdgeLog.d(TAG, "output EOS received")
                             }
                             codec.releaseOutputBuffer(outIdx, false)
                         }
                     }
                 }
+                if (++loops > 2000000) {
+                    throw IOException("decode loop guard hit (${pcm.size()} bytes)")
+                }
             }
             return Pcm(pcm.toByteArray(), sampleRate, channels)
+        } catch (e: Exception) {
+            EdgeLog.e(TAG, "decodeFile failed", e)
+            throw e
         } finally {
             try {
                 codec.stop()

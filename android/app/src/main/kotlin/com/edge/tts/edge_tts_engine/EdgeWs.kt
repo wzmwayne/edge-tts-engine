@@ -26,6 +26,7 @@ import javax.net.ssl.SSLSocket
  * 协议细节与社区 edge-tts 项目一致。
  */
 object EdgeWs {
+    private const val TAG = "EdgeWs"
     private const val WSS_HOST = "speech.platform.bing.com"
     private const val WSS_PATH =
         "/consumer/speech/synthesize/readaloud/edge/v1" +
@@ -104,11 +105,14 @@ object EdgeWs {
         pitchHz: Int,
         isStopped: () -> Boolean,
     ): ByteArray {
+        val t0 = System.currentTimeMillis()
         val rate = (if (ratePercent == 0) "+0%" else "${if (ratePercent > 0) "+" else ""}$ratePercent%")
         val pitch = (if (pitchHz == 0) "+0Hz" else "${if (pitchHz > 0) "+" else ""}$pitchHz")
+        EdgeLog.d(TAG, "collectMp3 text=${text.take(80)} voice=$voice rate=$rate pitch=$pitch")
         val out = ByteArrayOutputStream()
         for (chunk in splitChunks(text)) {
             if (isStopped()) break
+            EdgeLog.d(TAG, "chunk start bytes=${chunk.toByteArray(Charsets.UTF_8).size}")
             val sock = connect()
             try {
                 val cfg =
@@ -136,8 +140,14 @@ object EdgeWs {
                         0x8 -> throw IOException("server closed ws")
                         0x9 -> sendFrame(sock, 0xA, frame.payload) // ping -> pong
                         0xA -> {}
-                        0x1 -> if (frame.payload.toString(Charsets.UTF_8).contains("Path:turn.end")) break
-                        0x2 -> parseAudio(frame.payload)?.let { out.write(it) }
+                        0x1 -> if (frame.payload.toString(Charsets.UTF_8).contains("Path:turn.end")) {
+                            EdgeLog.d(TAG, "turn.end received, out=${out.size()}B")
+                            break
+                        }
+                        0x2 -> parseAudio(frame.payload)?.let {
+                            out.write(it)
+                            EdgeLog.d(TAG, "audio chunk +${it.size}B total=${out.size()}B")
+                        }
                     }
                 }
             } finally {
@@ -147,6 +157,7 @@ object EdgeWs {
                 }
             }
         }
+        EdgeLog.d(TAG, "collectMp3 done total=${out.size()}B took=${System.currentTimeMillis() - t0}ms")
         return out.toByteArray()
     }
 
@@ -168,6 +179,7 @@ object EdgeWs {
             val ctx = SSLContext.getInstance("TLS")
             ctx.init(null, null, null)
             val ssl = ctx.socketFactory.createSocket(raw, WSS_HOST, 443, true) as SSLSocket
+            ssl.soTimeout = 60000
             val params = SSLParameters()
             params.serverNames = listOf(SNIHostName(WSS_HOST))
             ssl.sslParameters = params
@@ -175,6 +187,7 @@ object EdgeWs {
             if (!HttpsURLConnection.getDefaultHostnameVerifier().verify(WSS_HOST, ssl.session)) {
                 throw IOException("TLS hostname mismatch")
             }
+            EdgeLog.d(TAG, "TLS handshake ok")
 
             val query =
                 "&ConnectionId=${connectId()}" +
@@ -210,8 +223,10 @@ object EdgeWs {
             if (head.indexOf(" 101 ") < 0) {
                 throw IOException("ws handshake failed: ${head.split("\r\n")[0]}")
             }
+            EdgeLog.d(TAG, "ws handshake ok ${head.split("\r\n")[0]}")
             return ssl
         } catch (e: Exception) {
+            EdgeLog.e(TAG, "connect failed", e)
             try {
                 raw.close()
             } catch (ignored: Exception) {

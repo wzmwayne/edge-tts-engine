@@ -16,6 +16,14 @@ class EdgeTtsApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
+      darkTheme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.blue,
+          brightness: Brightness.dark,
+        ),
+        useMaterial3: true,
+      ),
+      themeMode: ThemeMode.system,
       home: const HomePage(),
     );
   }
@@ -59,6 +67,7 @@ class _HomePageState extends State<HomePage> {
   String _search = '';
   bool _loading = false;
   String _status = '';
+  int _usageTaps = 0;
 
   @override
   void initState() {
@@ -241,31 +250,51 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Future<void> _enableLogging() async {
+    try {
+      final path = await _channel.invokeMethod<String>('enableLogging');
+      _setStatus('日志模式已启用，日志文件：$path');
+    } catch (e) {
+      _setStatus('启用日志失败: $e');
+    }
+  }
+
+  void _onUsageTap() {
+    _usageTaps++;
+    if (_usageTaps >= 7) {
+      _usageTaps = 0;
+      _enableLogging();
+    }
+  }
+
   Widget _buildUsageCard() {
-    return Card(
-      margin: const EdgeInsets.all(12),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: const [
-                Icon(Icons.info_outline),
-                SizedBox(width: 8),
-                Text('使用说明', style: TextStyle(fontWeight: FontWeight.bold)),
-              ],
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              '1. 安装并打开本应用\n'
-              '2. 选择音色后点击「打开系统 TTS 设置」\n'
-              '3. 在 设置 → 无障碍 → 文字转语音输出 中把默认引擎切换为「Edge TTS 引擎」\n'
-              '4. 任意应用（如 Legado 阅读器）即可使用 Edge 在线语音朗读\n'
-              '提示：需要联网；音色列表可点右上角刷新拉取全部 400+ 音色。',
-              style: TextStyle(fontSize: 13, height: 1.5),
-            ),
-          ],
+    return GestureDetector(
+      onTap: _onUsageTap,
+      child: Card(
+        margin: const EdgeInsets.all(12),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: const [
+                  Icon(Icons.info_outline),
+                  SizedBox(width: 8),
+                  Text('使用说明', style: TextStyle(fontWeight: FontWeight.bold)),
+                ],
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                '1. 安装并打开本应用\n'
+                '2. 选择音色后点击「打开系统 TTS 设置」\n'
+                '3. 在 设置 → 无障碍 → 文字转语音输出 中把默认引擎切换为「Edge TTS 引擎」\n'
+                '4. 任意应用（如 Legado 阅读器）即可使用 Edge 在线语音朗读\n'
+                '提示：需要联网；音色列表可点右上角刷新拉取全部 400+ 音色。',
+                style: TextStyle(fontSize: 13, height: 1.5),
+              ),
+            ],
+          ),
         ),
       ),
     );
