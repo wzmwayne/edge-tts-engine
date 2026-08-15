@@ -22,10 +22,20 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            // 固定通用 debug key（指纹 D4:E6:AB:1F:92:AE:9C:DA:8C:DA:3A:D5:81:12:AE:BC:4B:7C:59:91），
+            // 每个构建的签名一致，可直接覆盖安装。
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
-            // Signing with the debug keys for now, so the APK can be sideloaded directly.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }

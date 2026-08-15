@@ -8,7 +8,7 @@
 - 用户设备是 Android 7（API 24/25）。任何 API 26+ 的 API 会运行时崩溃（已踩坑：`ByteArrayOutputStream.toString(Charset)`）。写代码必须兼容 API 24。
 
 ## 签名
-- 用户选择方案 B：debug keystore 已通过 `actions/cache` 缓存（`~/.android/debug.keystore`，key `debug-keystore-v1`），保证每次 APK 签名一致。不要提交 keystore 文件。
+- release 使用仓库内固定 `android/app/debug.keystore`（通用 Android debug key：alias `androiddebugkey`，密码 `android`，指纹 `D4:E6:AB:1F:92:AE:9C:DA:8C:DA:3A:D5:81:12:AE:BC:4B:7C:59:91`），由 `android/app/build.gradle.kts` 的 `signingConfigs.release` 显式引用，每次构建签名一致、可直接覆盖安装。不要改签名配置，也不要新增其它 keystore 文件。
 
 ## 日志
 - 日志统一写单个文件 `/sdcard/Download/edge-tts-logs/edge-tts.log.txt`（Android 10+ 走 MediaStore），始终追加到同一文件，每条带完整时间戳 `yyyy-MM-dd HH:mm:ss.SSS`。注意：文件名必须与 MIME 匹配（`.log.txt` + text/plain），否则 MediaProvider 会改名并产生 `(2)` 后缀副本。

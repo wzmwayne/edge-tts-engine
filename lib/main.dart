@@ -482,7 +482,7 @@ class _SettingsPageState extends State<SettingsPage> {
   late bool _streaming;
   late bool _debug;
   late String _langFilter;
-  bool _saving = false;
+  bool _dirty = false;
 
   @override
   void initState() {
@@ -498,6 +498,7 @@ class _SettingsPageState extends State<SettingsPage> {
       final s = await widget.channel
           .invokeMethod<Map<dynamic, dynamic>>('getSettings');
       if (!mounted || s == null) return;
+      if (_dirty) return;
       setState(() {
         _streaming = (s['streaming'] as bool?) ?? false;
         _debug = (s['debug'] as bool?) ?? false;
@@ -506,16 +507,33 @@ class _SettingsPageState extends State<SettingsPage> {
     } catch (_) {}
   }
 
+  void _markDirty() {
+    _dirty = true;
+    _save();
+  }
+
   Future<void> _save() async {
-    setState(() => _saving = true);
     try {
       await widget.channel.invokeMethod('setSettings', {
         'streaming': _streaming,
         'debug': _debug,
         'langFilter': _langFilter,
       });
-    } catch (_) {}
-    if (mounted) setState(() => _saving = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(const SnackBar(
+            content: Text('设置已保存'),
+            duration: Duration(seconds: 1),
+          ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(SnackBar(content: Text('保存失败: $e')));
+      }
+    }
   }
 
   List<DropdownMenuItem<String>> _langOptions() {
@@ -549,12 +567,6 @@ class _SettingsPageState extends State<SettingsPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('设置'),
-        actions: [
-          TextButton(
-            onPressed: _saving ? null : _save,
-            child: const Text('保存'),
-          ),
-        ],
       ),
       body: ListView(
         children: [
@@ -562,7 +574,10 @@ class _SettingsPageState extends State<SettingsPage> {
             title: const Text('流式合成'),
             subtitle: const Text('Beta：实时边收边播（暂未启用，仍为全量缓冲）'),
             value: _streaming,
-            onChanged: (v) => setState(() => _streaming = v),
+            onChanged: (v) {
+              setState(() => _streaming = v);
+              _markDirty();
+            },
           ),
           const Divider(),
           ListTile(
@@ -574,6 +589,7 @@ class _SettingsPageState extends State<SettingsPage> {
               onChanged: (v) {
                 if (v == null) return;
                 setState(() => _langFilter = v);
+                _markDirty();
               },
             ),
           ),
@@ -582,7 +598,10 @@ class _SettingsPageState extends State<SettingsPage> {
             title: const Text('调试日志'),
             subtitle: const Text('写入 /sdcard/Download/edge-tts-logs/edge-tts.log.txt'),
             value: _debug,
-            onChanged: (v) => setState(() => _debug = v),
+            onChanged: (v) {
+              setState(() => _debug = v);
+              _markDirty();
+            },
           ),
         ],
       ),
