@@ -43,11 +43,11 @@ jobs:
           restore-keys: |
             pub-${{ runner.os }}-
 
-      - name: Build release APK
-        run: flutter build apk --release
+      - name: Build debug APK
+        run: flutter build apk --debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: edge-tts-engine-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
