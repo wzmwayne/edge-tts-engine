@@ -141,7 +141,7 @@ class StreamingDecoder(
     private val onStart: (sampleRate: Int, channels: Int) -> Unit,
     private val onPcm: (pcm: ByteArray) -> Unit,
 ) {
-    private const val TAG = "StreamingDecoder"
+    private val TAG = "StreamingDecoder"
     private var codec: MediaCodec? = null
     private var sampleRate = 0
     private var channels = 0
