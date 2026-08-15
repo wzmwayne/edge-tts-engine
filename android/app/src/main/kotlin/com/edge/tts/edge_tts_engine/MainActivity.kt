@@ -20,6 +20,12 @@ class MainActivity : FlutterActivity() {
         EdgeLog.init(applicationContext)
         EdgeLog.syncFromSettings(applicationContext)
         EdgeLog.d(TAG, "MainActivity onCreate")
+        HttpTtsServer.start(applicationContext)
+    }
+
+    override fun onDestroy() {
+        HttpTtsServer.stop()
+        super.onDestroy()
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {

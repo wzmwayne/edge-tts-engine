@@ -29,6 +29,7 @@ class EdgeTtsEngineService : TextToSpeechService() {
         EdgeLog.init(applicationContext)
         EdgeLog.syncFromSettings(applicationContext)
         EdgeLog.d(TAG, "service onCreate")
+        HttpTtsServer.start(applicationContext)
     }
 
     override fun onIsLanguageAvailable(lang: String?, country: String?, variant: String?): Int {
