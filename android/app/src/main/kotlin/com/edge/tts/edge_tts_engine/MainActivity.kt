@@ -141,8 +141,8 @@ class MainActivity : FlutterActivity() {
                     }
                 })
                 val rate = VoiceStore.readConfig(this)["rate"] as? Int ?: 100
-                engine.speechRate = rate / 100f
-                EdgeLog.d(TAG, "设置语速 speechRate=${engine.speechRate}")
+                engine.setSpeechRate(rate / 100f)
+                EdgeLog.d(TAG, "设置语速 speechRate=${rate / 100f}")
                 val code = engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "edge_tts_test")
                 EdgeLog.d(TAG, "speak() returned code=$code")
                 if (code == TextToSpeech.ERROR) {
