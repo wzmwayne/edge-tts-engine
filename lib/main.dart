@@ -123,8 +123,7 @@ class _HomePageState extends State<HomePage> {
 
   List<VoiceInfo> _voices = [];
   String _selected = 'zh-CN-XiaoxiaoNeural';
-  double _rate = 100;
-  double _pitch = 100;
+  double _rate = 1.0;
   String _search = '';
   bool _loading = false;
   String _status = '';
@@ -145,8 +144,7 @@ class _HomePageState extends State<HomePage> {
       if (cfg == null) return;
       setState(() {
         _selected = (cfg['voice'] as String?) ?? _selected;
-        _rate = ((cfg['rate'] as num?) ?? 100).toDouble();
-        _pitch = ((cfg['pitch'] as num?) ?? 100).toDouble();
+        _rate = ((cfg['rate'] as num?) ?? 100).toDouble() / 100.0;
       });
     } catch (e) {
       _setStatus('读取配置失败: $e');
@@ -225,16 +223,16 @@ class _HomePageState extends State<HomePage> {
     _setStatus('已选择 ${v.shortName}');
     await _channel.invokeMethod('setConfig', {
       'voice': v.shortName,
-      'rate': _rate.round(),
-      'pitch': _pitch.round(),
+      'rate': (_rate * 100).round(),
+      'pitch': 100,
     });
   }
 
   Future<void> _saveParams() async {
     await _channel.invokeMethod('setConfig', {
       'voice': _selected,
-      'rate': _rate.round(),
-      'pitch': _pitch.round(),
+      'rate': (_rate * 100).round(),
+      'pitch': 100,
     });
   }
 
@@ -407,33 +405,16 @@ class _HomePageState extends State<HomePage> {
                 const Text('语速'),
                 Expanded(
                   child: Slider(
-                    value: _rate,
-                    min: 50,
-                    max: 200,
+                    value: _rate.clamp(0.5, 2.0),
+                    min: 0.5,
+                    max: 2.0,
                     divisions: 30,
-                    label: '${_rate.round()}',
+                    label: '${_rate.toStringAsFixed(2)}x',
                     onChanged: (v) => setState(() => _rate = v),
                     onChangeEnd: (_) => _saveParams(),
                   ),
                 ),
-                Text('${_rate.round()}'),
-              ],
-            ),
-            Row(
-              children: [
-                const Text('语调'),
-                Expanded(
-                  child: Slider(
-                    value: _pitch,
-                    min: 50,
-                    max: 200,
-                    divisions: 30,
-                    label: '${_pitch.round()}',
-                    onChanged: (v) => setState(() => _pitch = v),
-                    onChangeEnd: (_) => _saveParams(),
-                  ),
-                ),
-                Text('${_pitch.round()}'),
+                Text('${_rate.toStringAsFixed(2)}x'),
               ],
             ),
             Row(

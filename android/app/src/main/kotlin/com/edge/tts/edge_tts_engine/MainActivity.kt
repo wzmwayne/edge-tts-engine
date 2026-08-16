@@ -140,7 +140,12 @@ class MainActivity : FlutterActivity() {
                         runOnUiThread { result.error("speak", "朗读失败", null) }
                     }
                 })
-                val code = engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "edge_tts_test")
+                val rate = VoiceStore.readConfig(this)["rate"] as? Int ?: 100
+                val params = HashMap<String, String>()
+                params[TextToSpeech.Engine.KEY_PARAM_RATE] =
+                    (rate / 100.0).toString()
+                EdgeLog.d(TAG, "设置语速 rate=$rate -> ${params[TextToSpeech.Engine.KEY_PARAM_RATE]}")
+                val code = engine.speak(text, TextToSpeech.QUEUE_FLUSH, params, "edge_tts_test")
                 EdgeLog.d(TAG, "speak() returned code=$code")
                 if (code == TextToSpeech.ERROR) {
                     engine.shutdown()
